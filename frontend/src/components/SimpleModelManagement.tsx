@@ -44,7 +44,7 @@ export const SimpleModelManagement: FC<SimpleModelManagementProps> = ({
   const { register, handleSubmit, control, watch } = useForm<SimpleModelModel>({
     defaultValues: {
       model: 'liblinear',
-      features: Object.values(availableFeatures),
+      // features: Object.values(availableFeatures),
       scheme: currentScheme || undefined,
       params: {
         cost: 1,
@@ -76,6 +76,24 @@ export const SimpleModelManagement: FC<SimpleModelManagementProps> = ({
     await updateSimpleModel(formData);
     //reset();
   };
+
+  // build default features selected
+  // const default_features = features.filter((e) => e.label.includes(e.value));
+  type Feature = {
+    label: string;
+    value: string;
+  };
+  const filterFeatures = (features: Feature[]) => {
+    const filtered = features.filter((e) => /sbert|fasttext/i.test(e.label));
+    const predictFeature = features.find((e) => /predict/i.test(e.label)); // Trouve le premier "predict"
+
+    if (predictFeature) {
+      filtered.push(predictFeature);
+    }
+
+    return filtered;
+  };
+  const defaultFeatures = filterFeatures(features);
 
   return (
     <div>
@@ -175,16 +193,16 @@ export const SimpleModelManagement: FC<SimpleModelManagementProps> = ({
             ))
         }
         <div>
-          <label htmlFor="features">Select features</label>
+          <label htmlFor="features">Features used to predict</label>
           {/* Specific management of the component with the react-form controller */}
           <Controller
             name="features"
             control={control}
-            render={({ field: { value, onChange } }) => (
+            render={({ field: { onChange } }) => (
               <Select
+                defaultValue={defaultFeatures}
                 options={features}
                 isMulti
-                value={features.filter((feature) => value?.includes(feature.value))}
                 onChange={(selectedOptions) => {
                   onChange(selectedOptions ? selectedOptions.map((option) => option.value) : []);
                 }}

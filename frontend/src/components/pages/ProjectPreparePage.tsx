@@ -4,7 +4,6 @@ import Tabs from 'react-bootstrap/Tabs';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { MdOutlineDeleteOutline } from 'react-icons/md';
 import { useParams } from 'react-router-dom';
-import { CodebookManagement } from '../CodeBookManagement';
 
 import { useAddFeature, useDeleteFeature, useGetFeatureInfo } from '../../core/api';
 import { useAppContext } from '../../core/context';
@@ -49,8 +48,16 @@ export const ProjectPreparePage: FC = () => {
 
   // hooks to use the objets
   const { register, handleSubmit, watch, reset } = useForm<FeatureModelExtended>({
-    defaultValues: { parameters: { value: '' }, type: '' },
+    defaultValues: {
+      parameters: {
+        dfm_max_term_freq: 100,
+        dfm_min_term_freq: 5,
+        dfm_ngrams: 1,
+      },
+      type: '',
+    },
   });
+
   const { notify } = useNotifications();
 
   // state for the type of feature to create
@@ -148,16 +155,25 @@ export const ProjectPreparePage: FC = () => {
                       ))}{' '}
                     </select>
 
-                    {/* {selectedFeatureToCreate === 'sbert' && (
+                    {selectedFeatureToCreate === 'sbert' && (
                       <div>
-                        <label htmlFor="dfm_norm">Model to use</label>
-                        <select id="dfm_norm" {...register('parameters.dfm_norm')}>
-                          {(project?.features.options.sbert.models || []).map((element) => (
-                            <option key={element as string} value={element as string}>
-                              {element as string}
-                            </option>
-                          ))}
+                        <label htmlFor="model">Model to use</label>
+                        <select id="model" {...register('parameters.model')}>
+                          {((project?.features.options['sbert']['models'] as string[]) || []).map(
+                            (element) => (
+                              <option key={element as string} value={element as string}>
+                                {element as string}
+                              </option>
+                            ),
+                          )}
                         </select>
+                      </div>
+                    )}
+                    {/* 
+                    {selectedFeatureToCreate === 'sbert' && (
+                      <div className="alert alert-warning mt-3" role="alert">
+                        Small context windows. Due to the model specifications, only the first 128
+                        tokens of the text are used to compute the embeddings.
                       </div>
                     )} */}
 
@@ -203,7 +219,6 @@ export const ProjectPreparePage: FC = () => {
                           <input
                             type="number"
                             id="dfm_ngrams"
-                            value={1}
                             {...register('parameters.dfm_ngrams')}
                           />
                         </div>
@@ -212,7 +227,6 @@ export const ProjectPreparePage: FC = () => {
                           <input
                             type="number"
                             id="dfm_min_term_freq"
-                            value={5}
                             {...register('parameters.dfm_min_term_freq')}
                           />
                         </div>
@@ -221,7 +235,6 @@ export const ProjectPreparePage: FC = () => {
                           <input
                             type="number"
                             id="dfm_max_term_freq"
-                            value={100}
                             {...register('parameters.dfm_max_term_freq')}
                           />
                         </div>
@@ -262,12 +275,6 @@ export const ProjectPreparePage: FC = () => {
 
                     <button className="btn btn-primary btn-validation">Create</button>
                   </form>
-                </Tab>
-                <Tab eventKey="codebook" title="Codebook">
-                  <CodebookManagement
-                    projectName={projectName}
-                    currentScheme={currentScheme || null}
-                  />
                 </Tab>
                 <Tab eventKey="imports" title="Import annotations">
                   <ImportAnnotations

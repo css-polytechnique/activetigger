@@ -46,7 +46,7 @@ export const ProjectActionsSidebar: FC<{
     : false;
 
   // display the number of current processes on the server
-  const { queueState, gpu, disk } = useGetServer(projectState || null);
+  const { disk } = useGetServer(projectState || null);
 
   // notify if disk is full
   const { notify } = useNotifications();
@@ -58,8 +58,6 @@ export const ProjectActionsSidebar: FC<{
   }
 
   const errors = projectState?.errors?.map((arr) => arr.join(' - ')) || [];
-
-  console.log(projectState);
 
   return (
     <div
@@ -190,17 +188,10 @@ export const ProjectActionsSidebar: FC<{
           )}
           <li className="nav-item ">
             <div className="nav-link">
-              <div className="badge text-bg-secondary" title="Number of processes running">
-                <span className="d-none d-md-inline">Process: </span>
-                {Object.values(queueState || []).length}
-              </div>
-              <br></br>
-              <div className="badge text-bg-warning" title="Used/Total">
+              <div className="badge text-bg-info" title="Memory">
                 <span className="d-none d-md-inline">
-                  GPU:
-                  {gpu
-                    ? `${(gpu['total_memory'] - gpu['available_memory']).toFixed(1)} / ${gpu['total_memory']} Go`
-                    : 'No'}
+                  HDD:
+                  {projectState?.memory ? `${projectState.memory.toFixed(1)} Mo` : ''}
                 </span>
               </div>
 

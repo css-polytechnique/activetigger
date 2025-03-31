@@ -13,6 +13,7 @@ from activetigger.app.dependencies import (
     verified_user,
 )
 from activetigger.datamodels import (
+    GeneratedElementsIn,
     GenerationCreationModel,
     GenerationModel,
     GenerationModelApi,
@@ -36,13 +37,14 @@ router = APIRouter()
 async def list_generation_models() -> list[GenerationModelApi]:
     """
     Returns the list of the available GenAI models for generation
+    API (not the models themselves)
     """
     return orchestrator.db_manager.generations_service.get_available_models()
 
 
 @router.get("/generate/models", dependencies=[Depends(verified_user)])
 async def list_project_generation_models(
-    project: Annotated[Project, Depends(get_project)]
+    project: Annotated[Project, Depends(get_project)],
 ) -> list[GenerationModel]:
     """
     Returns the list of the available GenAI models configure for a project
@@ -87,28 +89,29 @@ async def postgenerate(
     """
     Launch a call to generate from a prompt
     Only one possible by user
+
+    TODO : move to a module
     """
 
-    # get subset of elements
     try:
-        # extract = project.schemes.get_table(
-        #     request.scheme, 0, request.n_batch, request.mode
-        # )
+        # get subset of elements
         extract = project.schemes.get_sample(
             request.scheme, request.n_batch, request.mode
         )
 
+        # get model
         model = orchestrator.db_manager.generations_service.get_gen_model(
             request.model_id
         )
 
+        # add task to the queue
         unique_id = orchestrator.queue.add_task(
             "generation",
             project.name,
             GenerateCall(
+                path_process=project.params.dir,
                 username=current_user.username,
                 project_slug=project.name,
-                # df=extract.batch,
                 df=extract,
                 prompt=request.prompt,
                 model=GenerationModel(**model.__dict__),
@@ -124,12 +127,17 @@ async def postgenerate(
                 number=request.n_batch,
                 time=datetime.now(),
                 kind="generation",
+                get_progress=GenerateCall.get_progress_callback(
+                    project.params.dir.joinpath(unique_id)
+                    if project.params.dir is not None
+                    else None
+                ),
             )
         )
 
         orchestrator.log_action(
             current_user.username,
-            "INFO Start generating process",
+            "START GENERATE",
             project.params.project_slug,
         )
         return None
@@ -155,34 +163,54 @@ async def stop_generation(
         unique_id = p[0].unique_id
         orchestrator.queue.kill(unique_id)
         orchestrator.log_action(
-            current_user.username, "INFO stop generation", project.params.project_slug
+            current_user.username, "STOP GENERATE", project.params.project_slug
         )
         return None
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/generate/elements", dependencies=[Depends(verified_user)])
+@router.post("/generate/elements", dependencies=[Depends(verified_user)])
 async def getgenerate(
     project: Annotated[Project, Depends(get_project)],
     current_user: Annotated[UserInDBModel, Depends(verified_user)],
-    n_elements: int,
+    params: GeneratedElementsIn,
 ) -> TableOutModel:
     """
     Get elements from prediction
     """
     try:
+        # get data
         table = project.generations.get_generated(
-            project.name, current_user.username, n_elements
+            project.name, current_user.username, params.n_elements
         )
-    except Exception:
-        raise HTTPException(status_code=500, detail="Error in loading generated data")
+
+        # apply filters
+        table["answer"] = project.generations.filter(table["answer"], params.filters)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail="Error in loading generated data" + str(e)
+        )
 
     # join with the text
     # table = table.join(project.content["text"], on="index")
 
     r = table.to_dict(orient="records")
     return TableOutModel(items=r, total=len(r))
+
+
+@router.post("/generate/elements/drop", dependencies=[Depends(verified_user)])
+async def dropgenerate(
+    project: Annotated[Project, Depends(get_project)],
+    current_user: Annotated[UserInDBModel, Depends(verified_user)],
+) -> None:
+    """
+    Drop all elements from prediction for a user
+    """
+    try:
+        project.generations.drop_generated(project.name, current_user.username)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/generate/prompts", dependencies=[Depends(verified_user)])
@@ -209,8 +237,12 @@ async def add_prompt(
     Add a prompt to the project
     """
     try:
+        if prompt.name is not None:
+            name = prompt.name
+        else:
+            name = prompt.text
         project.generations.save_prompt(
-            current_user.username, project.name, prompt.text
+            current_user.username, project.name, prompt.text, name
         )
         return None
     except Exception as e:

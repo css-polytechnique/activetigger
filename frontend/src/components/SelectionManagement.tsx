@@ -3,6 +3,7 @@ import { FcStatistics } from 'react-icons/fc';
 import { useGetSimpleModel } from '../core/api';
 import { useAuth } from '../core/auth';
 import { useAppContext } from '../core/context';
+import { DisplayScores } from './DisplayScores';
 
 // define the component to configure selection mode
 export const SelectionManagement: FC = () => {
@@ -126,7 +127,7 @@ export const SelectionManagement: FC = () => {
             className="form-control"
             type="text"
             id="select_regex"
-            placeholder="Enter a regex / CONTEXT= for context"
+            placeholder="Search / Regex / CONTEXT= / QUERY="
             value={selectionConfig.filter}
             onChange={(e) => {
               setAppContext((prev) => ({
@@ -165,7 +166,7 @@ export const SelectionManagement: FC = () => {
                       ),
                     )}
                 </tbody>
-                <thead>
+                {/* <thead>
                   <tr>
                     <th>Indicators</th>
                     <th>Exact</th>
@@ -193,8 +194,15 @@ export const SelectionManagement: FC = () => {
                           </td>
                         </tr>
                       ))}
-                </tbody>
+                </tbody> */}
               </table>
+              <div>
+                <h5>Statistics</h5>
+                <DisplayScores
+                  scores={currentModel.statistics as unknown as Record<string, number>}
+                  scores_cv10={currentModel.statistics_cv10 as unknown as Record<string, number>}
+                />
+              </div>
             </div>
           )}
         </details>

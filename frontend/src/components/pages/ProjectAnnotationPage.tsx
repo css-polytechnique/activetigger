@@ -4,10 +4,9 @@ import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 import Highlighter from 'react-highlight-words';
 import { FaPencilAlt } from 'react-icons/fa';
-import { IoMdSkipBackward } from 'react-icons/io';
 import { LuRefreshCw } from 'react-icons/lu';
 import { PiEraser } from 'react-icons/pi';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import {
   useAddAnnotation,
@@ -19,6 +18,7 @@ import {
 import { useAuth } from '../../core/auth';
 import { useAppContext } from '../../core/context';
 import { ElementOutModel } from '../../types';
+import { BackButton } from '../BackButton';
 import { ProjectPageLayout } from '../layout/ProjectPageLayout';
 import { MulticlassInput } from '../MulticlassInput';
 import { MultilabelInput } from '../MultilabelInput';
@@ -217,6 +217,9 @@ export const ProjectAnnotationPage: FC = () => {
       return false;
     }
   };
+
+  const [wordsToHighlight, setWordsToHighlight] = useState<string>('');
+
   return (
     <ProjectPageLayout projectName={projectName || null} currentAction="annotate">
       <div className="container-fluid">
@@ -251,7 +254,7 @@ export const ProjectAnnotationPage: FC = () => {
                     ''
                   )}
                   <Tooltip anchorSelect=".currentstatistics" place="top">
-                    tagged / selection untagged / total
+                    tagged / sample selected / total
                   </Tooltip>
                   <div>
                     <button className="btn getelement" onClick={refetchElement}>
@@ -311,8 +314,8 @@ export const ProjectAnnotationPage: FC = () => {
                 highlightClassName="Search"
                 searchWords={
                   selectionConfig.filter && isValidRegex(selectionConfig.filter)
-                    ? [selectionConfig.filter]
-                    : []
+                    ? [selectionConfig.filter, ...wordsToHighlight.split('\n')]
+                    : wordsToHighlight.split('\n')
                 }
                 autoEscape={false}
                 textToHighlight={textInFrame}
@@ -329,7 +332,7 @@ export const ProjectAnnotationPage: FC = () => {
                   highlightClassName="Search"
                   searchWords={
                     selectionConfig.filter && isValidRegex(selectionConfig.filter)
-                      ? [selectionConfig.filter]
+                      ? [selectionConfig.filter, ...wordsToHighlight.split('\n')]
                       : []
                   }
                   autoEscape={false}
@@ -387,18 +390,12 @@ export const ProjectAnnotationPage: FC = () => {
       {elementId !== 'noelement' && (
         <div className="row">
           <div className="d-flex flex-wrap gap-2 justify-content-center">
-            <Link
-              to={`/projects/${projectName}/annotate/${history[history.length - 1]}`}
-              className="btn previouselement"
-              onClick={() => {
-                setAppContext((prev) => ({ ...prev, history: prev.history.slice(0, -1) }));
-              }}
-            >
-              <IoMdSkipBackward />
-              <Tooltip anchorSelect=".previouselement" place="top">
-                Go back to previous element
-              </Tooltip>
-            </Link>
+            <BackButton
+              projectName={projectName || ''}
+              history={history}
+              setAppContext={setAppContext}
+            />
+
             <button className="btn addcomment" onClick={() => setDisplayComment(!displayComment)}>
               <FaPencilAlt />
               <Tooltip anchorSelect=".addcomment" place="top">
@@ -465,7 +462,7 @@ export const ProjectAnnotationPage: FC = () => {
                 kindScheme={kindScheme}
               />
             </Tab>
-            <Tab eventKey="visualization" title="Visualization">
+            <Tab eventKey="visualization" title="Visualization" unmountOnExit={true}>
               <ProjectionManagement
                 projectName={projectName || null}
                 currentScheme={currentScheme || null}
@@ -563,6 +560,15 @@ export const ProjectAnnotationPage: FC = () => {
                 />
                 <span>Max: 100%</span>
               </label>
+              <div className="flex flex-col gap-2">
+                <label className="explanations">Highlight words in the text</label>
+                <br></br>
+                <textarea
+                  className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  placeholder="Line break to separate"
+                  onChange={(e) => setWordsToHighlight(e.target.value)}
+                />
+              </div>
             </Tab>
           </Tabs>
         )}

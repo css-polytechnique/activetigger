@@ -155,7 +155,12 @@ class Schemes:
         return len(self.content)
 
     def get_sample(
-        self, scheme: str, n_elements: int, mode: str, dataset: str = "train"
+        self,
+        scheme: str,
+        n_elements: int,
+        mode: str,
+        dataset: str = "train",
+        random: bool = False,
     ) -> DataFrame:
         """
         Get a sample of element following a method
@@ -175,7 +180,9 @@ class Schemes:
         if n_elements > len(df):
             n_elements = len(df)
 
-        return df.sample(n_elements).reset_index()
+        if random:
+            return df.sample(n=n_elements)
+        return df.head(n_elements)
 
     def get_table(
         self,
@@ -223,17 +230,26 @@ class Schemes:
                 filter="recent",
             )
 
-        # filter for contains
-        if contains:
-            f_contains = df["text"].str.contains(clean_regex(contains))
-            df = cast(DataFrame, df[f_contains])
-
         # build dataset
         if mode == "tagged":
             df = cast(DataFrame, df[df["labels"].notnull()])
 
         if mode == "untagged":
             df = cast(DataFrame, df[df["labels"].isnull()])
+
+        # filter for contains
+        if contains:
+            print(contains)
+            if contains.startswith("ALL:") and len(contains) > 4:
+                contains_f = contains.replace("ALL:", "")
+                f_labels = (
+                    df["labels"].str.contains(clean_regex(contains_f)).fillna(False)
+                )
+                f_text = df["text"].str.contains(clean_regex(contains_f)).fillna(False)
+                f_contains = f_labels | f_text
+            else:
+                f_contains = df["text"].str.contains(clean_regex(contains))
+            df = cast(DataFrame, df[f_contains]).fillna(False)
 
         # normalize size
         if max == 0:

@@ -30,12 +30,13 @@ from activetigger.datamodels import (
 )
 from activetigger.db.manager import DatabaseManager
 from activetigger.features import Features
-from activetigger.functions import clean_regex, get_metrics
+from activetigger.functions import clean_regex, get_dir_size, get_metrics
 from activetigger.generation.generations import Generations
-from activetigger.models import BertModels, SimpleModels
+from activetigger.models import BertModels
 from activetigger.projections import Projections
 from activetigger.queue import Queue
 from activetigger.schemes import Schemes
+from activetigger.simplemodels import SimpleModels
 
 MODELS = "bert_models.csv"
 TIMEZONE = pytz.timezone("Europe/Paris")
@@ -87,10 +88,14 @@ class Project:
 
     def delete(self):
         """
-        Delete project
+        Delete completely a project
         """
-        # remove folder
 
+        # remove static files
+        if Path(f"{os.environ['ACTIVETIGGER_PATH']}/static/{self.name}").exists():
+            shutil.rmtree(f"{os.environ['ACTIVETIGGER_PATH']}/static/{self.name}")
+
+        # remove folder of the project
         try:
             shutil.rmtree(self.params.dir)
         except Exception as e:
@@ -150,7 +155,7 @@ class Project:
         self.generations = Generations(
             self.db_manager, cast(list[UserGenerationComputing], self.computing)
         )
-        self.projections = Projections(self.computing, self.queue)
+        self.projections = Projections(self.params.dir, self.computing, self.queue)
         self.errors = []  # Move to specific class / db in the future
 
     def load_params(self, project_slug: str) -> ProjectModel:
@@ -208,6 +213,8 @@ class Project:
         if len(df) > 10000:
             raise Exception("You testset is too large")
 
+        print("col label", testset.col_label, "scheme", testset.scheme)
+
         # change names
         if not testset.col_label:
             df = df.rename(
@@ -232,11 +239,11 @@ class Project:
         df["id"] = df["id"].apply(lambda x: f"imported-{x}")
         df = df.set_index("id")
 
-        # import labels if specified + scheme
+        # import labels if specified + scheme // check if the labels are in the scheme
         if testset.col_label and testset.scheme:
             # Check the label columns if they match the scheme or raise error
-            scheme = self.schemes.available()[testset.scheme]
-            for label in df[testset.col_label].unique():
+            scheme = self.schemes.available()[testset.scheme]["labels"]
+            for label in df[testset.col_label].dropna().unique():
                 if label not in scheme:
                     raise Exception(f"Label {label} not in the scheme {testset.scheme}")
 
@@ -287,9 +294,7 @@ class Project:
             simplemodel.features = ["dfm"]
             simplemodel.standardize = False
 
-        # test if the parameters have the correct format
-        validation = self.simplemodels.validation[simplemodel.model]
-        params = validation(**simplemodel.params).dict()
+        params = simplemodel.params
 
         # add information on the target of the model
         if simplemodel.dichotomize is not None:
@@ -410,6 +415,10 @@ class Project:
                         na=False,
                     )
                 )
+            elif "QUERY=" in filter_san:  # case to use a query
+                f_regex = df[self.params.cols_context].eval(
+                    filter_san.replace("QUERY=", "")
+                )
             else:
                 f_regex = df["text"].str.contains(
                     filter_san, regex=True, case=True, na=False
@@ -418,9 +427,9 @@ class Project:
 
         # manage frame selection (if projection, only in the box)
         if frame and len(frame) == 4:
-            if user in self.features.projections:
-                if "data" in self.features.projections[user]:
-                    projection = self.features.projections[user]["data"]
+            if user in self.projections.available:
+                if "data" in self.projections.available[user]:
+                    projection = self.projections.available[user]["data"]
                     f_frame = (
                         (projection[0] > frame[0])
                         & (projection[0] < frame[1])
@@ -656,6 +665,7 @@ class Project:
         Send state of the project
         """
         # start_time = time.time()
+
         r = {
             "params": self.params,
             "users": {"active": self.get_active_users()},
@@ -690,8 +700,9 @@ class Project:
                 },
                 "training": self.projections.training(),  # list(self.projections.training().keys()),
             },
-            "generations": {"training": self.generations.current_users_generating()},
+            "generations": {"training": self.generations.training()},
             "errors": self.errors,
+            "memory": get_dir_size(str(self.params.dir)),
         }
 
         # end_time = time.time()
@@ -775,15 +786,18 @@ class Project:
     def export_raw(self, project_slug: str):
         """
         Export raw data
+        To be able to export, need to copy in the static folder
         """
-        # copy in the static folder
         name = f"{project_slug}_data_all.parquet"
         target_dir = self.params.dir if self.params.dir is not None else Path(".")
         path_origin = target_dir.joinpath("data_all.parquet")
-        path_target = target_dir.joinpath("..").joinpath("static").joinpath(name)
-        if not path_target.exists():
+        folder_target = f"{os.environ['ACTIVETIGGER_PATH']}/static/{project_slug}"
+        if not Path(folder_target).exists():
+            os.makedirs(folder_target)
+        path_target = f"{os.environ['ACTIVETIGGER_PATH']}/static/{project_slug}/{name}"
+        if not Path(path_target).exists():
             shutil.copyfile(path_origin, path_target)
-        return StaticFileModel(name=name, path=f"/static/{name}")
+        return StaticFileModel(name=name, path=f"static/{project_slug}/{name}")
 
     def compute_statistics(
         self, scheme: str, predictions: DataFrame, decimals: int = 2
@@ -1026,7 +1040,7 @@ class Project:
                 try:
                     error = future.exception()
                     if error:
-                        raise Exception(str(error))
+                        raise Exception("from task" + str(error))
                     results = future.result()
                     self.features.add(
                         feature_computation.name,
@@ -1074,7 +1088,6 @@ class Project:
                         list[GenerationResult],
                         results,
                     )
-                    print("RESULTS", r)
                     for row in r:
                         self.generations.add(
                             user=row.user,

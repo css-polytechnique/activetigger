@@ -1,21 +1,11 @@
 import json
-import logging
 import os
-import pickle
 import shutil
 from datetime import datetime
-from io import BytesIO
-from multiprocessing import Process
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 from pandas import DataFrame
-from sklearn.ensemble import RandomForestClassifier  # type: ignore[import]
-from sklearn.linear_model import LogisticRegression  # type: ignore[import]
-from sklearn.naive_bayes import MultinomialNB  # type: ignore[import]
-from sklearn.neighbors import KNeighborsClassifier  # type: ignore[import]
-from sklearn.preprocessing import StandardScaler  # type: ignore[import]
 from transformers import AutoModelForSequenceClassification, AutoTokenizer  # type: ignore[import]
 
 import activetigger.functions as functions
@@ -23,23 +13,13 @@ from activetigger.datamodels import (
     BertModelInformationsModel,
     BertModelParametersDbModel,
     BertModelParametersModel,
-    KnnParams,
-    LassoParams,
-    LiblinearParams,
-    MLStatisticsModel,
-    Multi_naivebayesParams,
-    RandomforestParams,
-    SimpleModelOutModel,
     StaticFileModel,
     UserModelComputing,
 )
 from activetigger.db.manager import DatabaseManager
 from activetigger.db.projects import ProjectsService
 from activetigger.queue import Queue
-from activetigger.tasks.fit_model import FitModel
 from activetigger.tasks.predict_bert import PredictBert
-
-# from activetigger.tasks.empty_task import EmptyTask
 from activetigger.tasks.train_bert import TrainBert
 
 
@@ -126,16 +106,21 @@ class BertModel:
             r = json.load(f)
         return list(r["id2label"].values())
 
-    def get_training_progress(self) -> float | None:
+    def get_progress(self) -> float | None:
         """
         Get progress when training
         (different cases)
         """
         # case of training
+        print(
+            "progress",
+            (self.path.joinpath("progress_train")).exists(),
+            (self.path.joinpath("progress_train")),
+        )
         if (self.status == "training") & (
-            self.path.joinpath("train/progress")
+            self.path.joinpath("progress_train")
         ).exists():
-            with open(self.path.joinpath("train/progress"), "r") as f:
+            with open(self.path.joinpath("progress_train"), "r") as f:
                 r = f.read()
                 if r == "":
                     r = "0"
@@ -211,7 +196,7 @@ class BertModels:
 
     project_slug: str
     path: Path
-    queue: Any
+    queue: Queue
     computing: list[UserModelComputing]
     projects_service: ProjectsService
     db_manager: DatabaseManager
@@ -222,7 +207,7 @@ class BertModels:
         self,
         project_slug: str,
         path: Path,
-        queue: Any,
+        queue: Queue,
         computing: list,
         db_manager: DatabaseManager,
         list_models: str | None = None,
@@ -247,58 +232,10 @@ class BertModels:
                     "language": "fr",
                 },
                 {
-                    "name": "camembert/camembert-large",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "fr",
-                },
-                {
-                    "name": "flaubert/flaubert_small_cased",
-                    "priority": 5,
-                    "comment": "",
-                    "language": "fr",
-                },
-                {
                     "name": "flaubert/flaubert_base_cased",
                     "priority": 7,
                     "comment": "",
                     "language": "fr",
-                },
-                {
-                    "name": "flaubert/flaubert_large_cased",
-                    "priority": 9,
-                    "comment": "",
-                    "language": "fr",
-                },
-                {
-                    "name": "distilbert-base-cased",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "en",
-                },
-                {
-                    "name": "roberta-base",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "en",
-                },
-                {
-                    "name": "microsoft/deberta-base",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "en",
-                },
-                {
-                    "name": "distilbert-base-multilingual-cased",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "multi",
-                },
-                {
-                    "name": "microsoft/Multilingual-MiniLM-L12-H384",
-                    "priority": 0,
-                    "comment": "",
-                    "language": "multi",
                 },
             ]
         self.project_slug = project_slug
@@ -323,27 +260,8 @@ class BertModels:
                 r[m["scheme"]] = {}
             r[m["scheme"]][m["name"]] = {
                 "predicted": m["parameters"]["predicted"],
-                "compressed": m["parameters"]["compressed"],
+                "predicted_external": m["parameters"].get("predicted_external", False),
             }
-            # if no compression, start it
-            if not m["parameters"]["compressed"]:
-                if (self.path / "../../static" / f"{m['name']}.tar.gz").exists():
-                    # update bdd
-                    self.projects_service.set_model_params(
-                        self.project_slug,
-                        m["name"],
-                        "compressed",
-                        True,
-                    )
-                else:
-                    # create a flag
-                    with open(
-                        self.path / "../../static" / f"{m['name']}.tar.gz", "w"
-                    ) as f:
-                        f.write("process started")
-                    # start compression
-                    self.start_compression(m["name"])
-
         return r
 
     def training(self) -> dict:
@@ -357,9 +275,7 @@ class BertModels:
             e.user: {
                 "name": e.model_name,
                 "status": e.status,
-                "progress": (
-                    e.get_training_progress() if e.get_training_progress else None
-                ),
+                "progress": (e.get_progress() if e.get_progress else None),
                 "loss": e.model.get_loss(),
             }
             for e in self.computing
@@ -376,7 +292,9 @@ class BertModels:
             raise FileNotFoundError("Model does not exist")
         try:
             shutil.rmtree(self.path / bert_name)
-            os.remove(self.path / "../../static" / f"{bert_name}.tar.gz")
+            os.remove(
+                f"{os.environ['ACTIVETIGGER_PATH']}/static/{self.project_slug}/{bert_name}.tar.gz"
+            )
         except Exception as e:
             raise Exception(f"Problem to delete model : {e}")
         return {"success": "Bert model deleted"}
@@ -430,19 +348,24 @@ class BertModels:
 
         # name integrating the scheme & user + date
         current_date = datetime.now()
+        minutes = current_date.strftime("%M")
+        hour = current_date.strftime("%H")
         day = current_date.strftime("%d")
         month = current_date.strftime("%m")
         year = current_date.strftime("%Y")
-        name = f"{name}__{user}__{project}__{scheme}__{day}-{month}-{year}"
+        model_name = f"{name}__{user}__{project}__{scheme}__{day}-{month}-{year}_{hour}h{minutes}"
 
         # check if a project not already exist
-        if self.projects_service.model_exists(project, name):
+        if self.projects_service.model_exists(project, model_name):
             raise Exception("A model with this name already exists")
 
         # if GPU requested, test if enough memory is available (to avoid CUDA out of memory)
         if params.gpu:
             mem = functions.get_gpu_memory_info()
-            if self.estimate_memory_use(name, kind="train") > mem["available_memory"]:
+            if (
+                self.estimate_memory_use(model_name, kind="train")
+                > mem["available_memory"]
+            ):
                 raise Exception(
                     "Not enough GPU memory available. Wait or reduce batch."
                 )
@@ -453,7 +376,8 @@ class BertModels:
             project,
             TrainBert(
                 path=self.path,
-                name=name,
+                project_slug=project,
+                model_name=model_name,
                 df=df.copy(deep=True),
                 col_label=col_label,
                 col_text=col_text,
@@ -461,28 +385,12 @@ class BertModels:
                 params=params,
                 test_size=test_size,
             ),
-            # EmptyTask(120),
             queue="gpu",
         )
         del df
-        # unique_id  = self.queue.add(
-        #     "training",
-        #     project,
-        #     train_bert,
-        #     {
-        #         "path": self.path,
-        #         "name": name,
-        #         "df": df.copy(deep=True),
-        #         "col_label": col_label,
-        #         "col_text": col_text,
-        #         "base_model": base_model,
-        #         "params": params,
-        #         "test_size": test_size,
-        #     },
-        # )
 
         # Update the queue state
-        b = BertModel(name, self.path / name, base_model)
+        b = BertModel(model_name, self.path / model_name, base_model)
         b.status = "training"
         self.computing.append(
             UserModelComputing(
@@ -495,7 +403,7 @@ class BertModels:
                 status="training",
                 scheme=scheme,
                 dataset=None,
-                get_training_progress=b.get_training_progress,
+                get_progress=b.get_progress,
             )
         )
 
@@ -505,12 +413,12 @@ class BertModels:
         # add in database
         if not self.projects_service.add_model(
             kind="bert",
-            name=name,
+            name=model_name,
             user=user,
             project=project,
             scheme=scheme,
             params=params.model_dump(),
-            path=str(self.path / name),
+            path=str(self.path / model_name),
             status="training",
         ):
             raise Exception("Problem to add in database")
@@ -588,7 +496,7 @@ class BertModels:
                 time=datetime.now(),
                 kind="predict_bert",
                 status="testing",
-                get_training_progress=b.get_training_progress,
+                get_progress=b.get_progress,
                 dataset="test",
             )
         )
@@ -618,7 +526,7 @@ class BertModels:
             raise Exception("The model does not exist")
 
         # load the model
-        b = BertModel(name, self.path / name)
+        b = BertModel(name, self.path.joinpath(name))
         b.load(lazy=True)
         unique_id = self.queue.add_task(
             "prediction",
@@ -645,21 +553,10 @@ class BertModels:
                 kind="predict_bert",
                 dataset=dataset,
                 status="predicting",
-                get_training_progress=b.get_training_progress,
+                get_progress=b.get_progress,
             )
         )
         return {"success": "bert model predicting"}
-
-    def start_compression(self, name):
-        """
-        Compress bertmodel as a separate process
-        """
-        process = Process(
-            target=shutil.make_archive,
-            args=(self.path / "../../static" / name, "gztar", self.path / name),
-        )
-        process.start()
-        print("starting compression")
 
     def rename(self, former_name: str, new_name: str):
         """
@@ -697,22 +594,23 @@ class BertModels:
         Export predict file if exists
         """
         path = self.path / name / file_name
+        if not path.exists():
+            raise FileNotFoundError("file does not exist")
+
+        df = pd.read_parquet(path)
 
         # change format if needed
         if format == "csv":
-            df = pd.read_parquet(path)
             file_name = "predict.csv"
             path = self.path / name / file_name
             df.to_csv(path)
         # change format if needed
-        if format == "xlsx":
-            df = pd.read_parquet(path)
+        elif format == "xlsx":
             file_name = "predict.xlsx"
             path = self.path / name / file_name
             df.to_excel(path)
-
-        if not path.exists():
-            raise FileNotFoundError("file does not exist")
+        else:
+            raise Exception("Format not supported")
 
         r = {"name": file_name, "path": path}
         return r
@@ -721,12 +619,13 @@ class BertModels:
         """
         Export bert archive if exists
         """
-        file_name = f"{name}.tar.gz"
-        if not (self.path.joinpath("../../static").joinpath(file_name)).exists():
+        file = f"{os.environ['ACTIVETIGGER_PATH']}/static/{self.project_slug}/{name}.tar.gz"
+
+        if not Path(file).exists():
             raise FileNotFoundError("file does not exist")
         return StaticFileModel(
-            name=file_name,
-            path=str(Path("/static").joinpath(file_name)),
+            name=f"{name}.tar.gz",
+            path=f"/static/{self.project_slug}/{name}.tar.gz",
         )
 
     def add(self, element: UserModelComputing):
@@ -738,11 +637,18 @@ class BertModels:
             self.projects_service.change_model_status(
                 self.project_slug, element.model_name, "trained"
             )
+            # TODO test if the model is already compressed
+            self.projects_service.set_model_params(
+                self.project_slug,
+                element.model_name,
+                "compressed",
+                True,
+            )
             print("Model trained")
         if element.status == "testing":
             print("Model tested")
         if element.status == "predicting":
-            # case of global prediction completed
+            # update flag if there is a prediction of the whole dataset
             if element.dataset == "all":
                 self.projects_service.set_model_params(
                     self.project_slug,
@@ -750,370 +656,12 @@ class BertModels:
                     flag="predicted",
                     value=True,
                 )
-            print("Prediction finished")
-
-
-class SimpleModels:
-    """
-    Managing simplemodels
-    - define available models
-    - save a simplemodel/user
-    - train simplemodels
-    """
-
-    available_models: dict
-    validation: dict
-    existing: dict
-    computing: list
-    path: Path
-    queue: Queue
-    save_file: str
-
-    def __init__(self, path: Path, queue: Any, computing: list) -> None:
-        """
-        Init Simplemodels class
-        """
-        # Models and default parameters
-        self.available_models = {
-            "liblinear": {"cost": 1},
-            "knn": {"n_neighbors": 3},
-            "randomforest": {"n_estimators": 500, "max_features": None},
-            "lasso": {"C": 32},
-            "multi_naivebayes": {"alpha": 1, "fit_prior": True, "class_prior": None},
-        }
-
-        # To validate JSON
-        self.validation = {
-            "liblinear": LiblinearParams,
-            "knn": KnnParams,
-            "randomforest": RandomforestParams,
-            "lasso": LassoParams,
-            "multi_naivebayes": Multi_naivebayesParams,
-        }
-        self.existing: dict = {}  # computed simplemodels
-        self.computing: list = computing  # currently under computation
-        self.path: Path = path  # path to operate
-        self.queue = queue  # access to executor for multiprocessing
-        self.save_file: str = "simplemodels.pickle"  # file to save current state
-        self.loads()  # load existing simplemodels
-
-    def __repr__(self) -> str:
-        return str(self.available())
-
-    def available(self):
-        """
-        Available simplemodels
-        """
-        r = {}
-        for u in self.existing:
-            r[u] = {}
-            for s in self.existing[u]:
-                sm = self.existing[u][s]
-                r[u][s] = {
-                    "model": sm.name,
-                    "params": sm.model_params,
-                    "features": sm.features,
-                    "statistics": sm.statistics,
-                }
-        return r
-
-    def get(self, scheme: str, username: str) -> SimpleModelOutModel | None:
-        """
-        Get a specific simplemodel
-        """
-        if username in self.existing:
-            if scheme in self.existing[username]:
-                sm = self.existing[username][scheme]
-                return SimpleModelOutModel(
-                    model=sm.name,
-                    params=sm.model_params,
-                    features=sm.features,
-                    statistics=sm.statistics,
-                    statistics_cv10=sm.cv10,
-                    scheme=scheme,
-                    username=username,
+            # update flag if there is a prediction in an external dataset
+            if element.dataset == "external":
+                self.projects_service.set_model_params(
+                    self.project_slug,
+                    element.model_name,
+                    flag="predicted_external",
+                    value=True,
                 )
-
-        return None
-
-    def get_prediction(self, scheme: str, username: str) -> DataFrame:
-        """
-        Get a specific simplemodel
-        """
-        if username not in self.existing:
-            raise ValueError("No model for this user")
-        if scheme not in self.existing[username]:
-            raise ValueError("No model for this scheme")
-        sm = self.existing[username][scheme]
-        return sm.proba
-
-    def training(self) -> dict:
-        """
-        Currently under training
-        """
-        r = {e.user: list(e.scheme) for e in self.computing if e.kind == "simplemodel"}
-        return r
-
-    def exists(self, user: str, scheme: str):
-        """
-        Test if a simplemodel exists for a user/scheme
-        """
-        if user in self.existing:
-            if scheme in self.existing[user]:
-                return True
-        return False
-
-    def get_model(self, user: str, scheme: str):
-        """
-        Select a specific model in the repo
-        """
-        if user not in self.existing:
-            return "This user has no model"
-        if scheme not in self.existing[user]:
-            return "The model for this scheme does not exist"
-        return self.existing[user][scheme]
-
-    def load_data(self, data, col_label, col_predictors, standardize):
-        """
-        Load data
-        """
-        f_na = data[col_predictors].isna().sum(axis=1) > 0
-        if f_na.sum() > 0:
-            print(f"There is {f_na.sum()} predictor rows with missing values")
-
-        # normalize X data
-        if standardize:
-            df_pred = self.standardize(data[~f_na][col_predictors])
-        else:
-            df_pred = data[~f_na][col_predictors]
-
-        # create global dataframe with no missing predictor
-        df = pd.concat([data[~f_na][col_label], df_pred], axis=1)
-
-        # data for training
-        Y = df[col_label]
-        X = df[col_predictors]
-        labels = Y.unique()
-
-        return X, Y, labels
-
-    def standardize(self, df):
-        """
-        Apply standardization
-        """
-        scaler = StandardScaler()
-        df_stand = scaler.fit_transform(df)
-        return pd.DataFrame(df_stand, columns=df.columns, index=df.index)
-
-    def compute_simplemodel(
-        self,
-        project_slug: str,
-        user: str,
-        scheme: str,
-        features: list,
-        name: str,
-        df: DataFrame,
-        col_labels: str,
-        col_features: list,
-        standardize: bool = True,
-        model_params: dict | None = None,
-    ):
-        """
-        Add a new simplemodel for a user and a scheme
-        """
-        logger_simplemodel = logging.getLogger("simplemodel")
-        logger_simplemodel.info("Intiating the computation process for the simplemodel")
-        X, Y, labels = self.load_data(df, col_labels, col_features, standardize)
-
-        # default parameters
-        if model_params is None:
-            model_params = self.available_models[name]
-
-        # Select model
-        if name == "knn":
-            model = KNeighborsClassifier(
-                n_neighbors=int(model_params["n_neighbors"]), n_jobs=-1
-            )
-
-        if name == "lasso":
-            model = LogisticRegression(
-                penalty="l1", solver="liblinear", C=model_params["C"], n_jobs=-1
-            )
-
-        if name == "liblinear":
-            # Liblinear : method = 1 : multimodal logistic regression l2
-            model = LogisticRegression(
-                penalty="l2", solver="lbfgs", C=model_params["cost"], n_jobs=-1
-            )
-
-        if name == "randomforest":
-            # params  Num. trees mtry  Sample fraction
-            # Number of variables randomly sampled as candidates at each split:
-            # it is “mtry” in R and it is “max_features” Python
-            #  The sample.fraction parameter specifies the fraction of observations to be used in each tree
-            model = RandomForestClassifier(
-                n_estimators=int(model_params["n_estimators"]),
-                random_state=42,
-                max_features=(
-                    int(model_params["max_features"])
-                    if model_params["max_features"]
-                    else None
-                ),
-                n_jobs=-1,
-            )
-
-        if name == "multi_naivebayes":
-            # small workaround for parameters
-            if "class_prior" in model_params and model_params["class_prior"]:
-                class_prior = model_params["class_prior"]
-            else:
-                class_prior = None
-            # Only with dtf or tfidf for features
-            # TODO: calculate class prior for docfreq & termfreq
-            model = MultinomialNB(
-                alpha=model_params["alpha"],
-                fit_prior=model_params["fit_prior"],
-                class_prior=class_prior,
-            )
-
-        # launch the compuation (model + statistics) as a future process
-        args = {"model": model, "X": X, "Y": Y, "labels": labels}
-        unique_id = self.queue.add_task("simplemodel", project_slug, FitModel(**args))
-        del args
-
-        sm = SimpleModel(
-            name, user, X, Y, labels, "computing", features, standardize, model_params
-        )
-        self.computing.append(
-            UserModelComputing(
-                user=user,
-                model=sm,
-                model_name=sm.name,
-                unique_id=unique_id,
-                time=datetime.now(),
-                kind="simplemodel",
-                status="training",
-                scheme=scheme,
-            )
-        )
-
-    def dumps(self):
-        """
-        Dumps all simplemodels to a pickle
-        """
-        with open(self.path / self.save_file, "wb") as file:
-            pickle.dump(self.existing, file)
-
-    def loads(self) -> bool:
-        """
-        Load all simplemodels from a pickle
-        """
-        if not (self.path / self.save_file).exists():
-            return False
-        with open(self.path / self.save_file, "rb") as file:
-            self.existing = pickle.load(file)
-        return True
-
-    def add(self, element: UserModelComputing, results) -> None:
-        """
-        Add simplemodel after computation
-        """
-        sm = element.model
-        sm.model = results.model
-        sm.proba = results.proba
-        sm.cv10 = results.cv10
-        sm.statistics = results.statistics
-        if element.user not in self.existing:
-            self.existing[element.user] = {}
-        self.existing[element.user][element.scheme] = sm
-        self.dumps()
-
-    def export_prediction(self, scheme: str, username: str, format: str = "csv"):
-        # get data
-        table = self.get_prediction(scheme, username)
-        # convert to payload
-        if format == "csv":
-            output = BytesIO()
-            pd.DataFrame(table).to_csv(output)
-            output.seek(0)
-            headers = {
-                "Content-Disposition": 'attachment; filename="data.csv"',
-                "Content-Type": "text/csv",
-            }
-            return output, headers
-        elif format == "xlsx":
-            output = BytesIO()
-            pd.DataFrame(table).to_excel(output)
-            output.seek(0)
-            headers = {
-                "Content-Disposition": 'attachment; filename="data.xlsx"',
-                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            }
-            return output, headers
-        elif format == "parquet":
-            output = BytesIO()
-            pd.DataFrame(table).to_parquet(output)
-            output.seek(0)
-            headers = {
-                "Content-Disposition": 'attachment; filename="data.parquet"',
-                "Content-Type": "application/octet-stream",
-            }
-            return output, headers
-        else:
-            raise ValueError("Format not supported")
-
-
-class SimpleModel:
-    name: str
-    user: str
-    features: list
-    X: DataFrame
-    Y: DataFrame
-    labels: list
-    model_params: dict
-    standardize: bool
-    proba: DataFrame | None
-    statistics: MLStatisticsModel | None
-    cv10: MLStatisticsModel | None
-    # model
-
-    def __init__(
-        self,
-        name: str,
-        user: str,
-        X: DataFrame,
-        Y: DataFrame,
-        labels: list,
-        model,
-        features: list,
-        standardize: bool,
-        model_params: dict | None,
-    ) -> None:
-        """
-        Define a specific Simplemodel with parameters
-        TODO : add timestamp ?
-        TODO : not sure that statistics function are still usefull since it is calculated during the fit
-        """
-        self.name = name
-        self.user = user
-        self.features = features
-        self.X = X
-        self.Y = Y
-        self.labels = labels
-        self.model_params = model_params
-        self.standardize = standardize
-        self.model = model
-        self.proba = None
-        self.statistics = None
-        self.cv10 = None
-
-    def json(self):
-        """
-        Return json representation
-        """
-        return {
-            "name": str(self.name),
-            "features": list(self.features),
-            "labels": list(self.labels),
-            "params": dict(self.model_params),
-        }
+            print("Prediction finished")

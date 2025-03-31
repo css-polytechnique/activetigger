@@ -5,6 +5,7 @@ import { IoMdLogIn, IoMdLogOut } from 'react-icons/io';
 import { Link, useNavigate } from 'react-router-dom';
 import { Tooltip } from 'react-tooltip';
 import logo from '../../assets/at.png';
+import { useGetServer } from '../../core/api';
 import { useAuth } from '../../core/auth';
 import { useAppContext } from '../../core/context';
 
@@ -29,12 +30,15 @@ const NavBar: FC<NavBarPropsType> = ({ currentPage }) => {
 
   // function to clear history
   const {
-    appContext: { history },
+    appContext: { history, currentProject },
     setAppContext,
   } = useAppContext();
   const actionClearHistory = () => {
     setAppContext((prev) => ({ ...prev, history: [] }));
   };
+
+  // display the number of current processes on the server
+  const { queueState, gpu } = useGetServer(currentProject || null);
 
   return (
     <div className="bg-primary">
@@ -60,10 +64,10 @@ const NavBar: FC<NavBarPropsType> = ({ currentPage }) => {
             <span className="navbar-toggler-icon"></span>
           </button>
           <div
-            className={cx('navbar-collapse', expanded ? 'expanded' : 'collapse')}
+            className={cx('navbar-collapse ', expanded ? 'expanded' : 'collapse')}
             id="navbarSupportedContent"
           >
-            <ul className="navbar-nav me-auto mb-2 mb-lg-0">
+            <ul className="navbar-nav me-auto mb-2 mb-lg-0 d-flex">
               {PAGES.map(({ id, label, href }) => (
                 <li key={id} className="nav-item">
                   <Link
@@ -76,27 +80,53 @@ const NavBar: FC<NavBarPropsType> = ({ currentPage }) => {
                 </li>
               ))}
             </ul>
-            {authenticatedUser ? (
-              <span className="d-flex align-items-center navbar-text navbar-text-margins">
-                <span className="mx-2">Logged as {authenticatedUser.username}</span>
-                <button className="btn btn-primary clearhistory" onClick={actionClearHistory}>
-                  <FiRefreshCcw />
-                  <span className="badge badge-warning">{history.length}</span>
-                </button>
-                <Tooltip anchorSelect=".clearhistory" place="top">
-                  Clear the current session (you can only annotate once each element by session)
-                </Tooltip>
-                <button
-                  className="btn btn-primary"
-                  onClick={async () => {
-                    const success = await logout();
-                    if (success) navigate('/');
-                  }}
+            <ul className="navbar-nav me-auto mb-2 mb-lg-0 d-flex">
+              <li className="m-1">
+                <div
+                  className="nav-item badge text-bg-secondary"
+                  title="Number of processes running"
                 >
-                  {' '}
-                  <IoMdLogOut title="Logout" />
-                </button>
-              </span>
+                  <span className="d-none d-md-inline">Process: </span>
+                  {Object.values(queueState || []).length}
+                </div>
+              </li>
+              <li className="m-1">
+                <div className="badge text-bg-secondary" title="Used/Total">
+                  <span className="d-none d-md-inline">GPU:</span>
+                  {gpu
+                    ? `${(gpu['total_memory'] - gpu['available_memory']).toFixed(1)} / ${gpu['total_memory']} Go`
+                    : 'No'}
+                </div>
+              </li>
+            </ul>
+
+            {authenticatedUser ? (
+              <ul className="d-flex navbar-nav me-auto mb-2 mb-lg-0 navbar-text navbar-text-margins align-items-center">
+                <li className="d-flex nav-item">
+                  <button className="btn btn-primary clearhistory" onClick={actionClearHistory}>
+                    <FiRefreshCcw />
+                    <span className="badge badge-warning">{history.length}</span>
+                  </button>
+                </li>
+                <li className="nav-item">
+                  <span>Logged as {authenticatedUser.username}</span>
+                </li>
+                <li className="nav-item">
+                  <Tooltip anchorSelect=".clearhistory" place="top">
+                    Clear the current session (you can only annotate once each element by session)
+                  </Tooltip>
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      const success = await logout();
+                      if (success) navigate('/');
+                    }}
+                  >
+                    {' '}
+                    <IoMdLogOut title="Logout" />
+                  </button>
+                </li>
+              </ul>
             ) : (
               <Link to="/login">
                 <IoMdLogIn title="login" />

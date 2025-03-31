@@ -6,10 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
 import PulseLoader from 'react-spinners/PulseLoader';
 
-import { stringify } from 'csv-stringify/browser/esm/sync';
+//import { stringify } from 'csv-stringify/browser/esm/sync';
 import { HiOutlineQuestionMarkCircle } from 'react-icons/hi';
 import { Tooltip } from 'react-tooltip';
-import { useCreateProject } from '../../core/api';
+import { useAddProjectFile, useCreateProject } from '../../core/api';
 import { useNotifications } from '../../core/notifications';
 import { loadFile } from '../../core/utils';
 import { ProjectModel } from '../../types';
@@ -33,11 +33,12 @@ export const ProjectCreationForm: FC = () => {
     { value: 'fr', label: 'French' },
     { value: 'de', label: 'German' },
     { value: 'cn', label: 'Chinese' },
+    { value: 'ja', label: 'Japanese' },
   ];
   const { register, control, handleSubmit, setValue } = useForm<ProjectModel & { files: FileList }>(
     {
       defaultValues: {
-        project_name: 'New project',
+        //        project_name: 'New project',
         n_train: 100,
         n_test: 0,
         language: 'en',
@@ -52,6 +53,7 @@ export const ProjectCreationForm: FC = () => {
   const [data, setData] = useState<DataType | null>(null); // state for the data
   const navigate = useNavigate(); // rooting
   const createProject = useCreateProject(); // API call
+  const addProjectFile = useAddProjectFile(); // API call
   const files = useWatch({ control, name: 'files' }); // watch the files entry
   // available columns
   const columns = data?.headers
@@ -113,25 +115,21 @@ export const ProjectCreationForm: FC = () => {
       }
       setSpinner(true);
       try {
-        // ERROR : problème avec gros parquet unparse marche pas
-        //const csv = data ? unparse(data.data, { header: true, columns: data.headers }) : '';
-        console.log('start parsing');
-        console.log(data.headers);
-        const csv = stringify(data.data, { header: true, columns: data.headers.filter(Boolean) });
-        console.log('data parsing done');
         try {
+          // send the data
+          await addProjectFile(files[0], formData.project_name);
+          // create the project
           const slug = await createProject({
             ...omit(formData, 'files'),
-            csv,
             filename: data.filename,
           });
           setSpinner(false);
           navigate(`/projects/${slug}`);
         } catch (error) {
+          notify({ type: 'error', message: error + '' });
           setSpinner(false);
         }
       } catch (error) {
-        console.log(error);
         notify({ type: 'error', message: 'Error creating project' });
         navigate('/projects');
       }
@@ -160,6 +158,7 @@ export const ProjectCreationForm: FC = () => {
             to later join the data with other tables.
           </div>
         </div>
+
         <form onSubmit={handleSubmit(onSubmit)} className="form-frame">
           <div>
             <label className="form-label" htmlFor="project_name">
@@ -168,6 +167,7 @@ export const ProjectCreationForm: FC = () => {
             <input
               className="form-control"
               id="project_name"
+              placeholder="Name of the project (need to be unique in the system)"
               type="text"
               {...register('project_name')}
               onClick={handleClickOnText}
@@ -263,9 +263,24 @@ export const ProjectCreationForm: FC = () => {
                   </select>
 
                   <label className="form-label" htmlFor="col_label">
-                    Column for existing annotations (optional)
+                    Columns for existing annotations (optional)
                   </label>
-                  <select
+                  <Controller
+                    name="cols_label"
+                    control={control}
+                    render={({ field: { onChange } }) => (
+                      <Select
+                        options={columnsSelect}
+                        isMulti
+                        onChange={(selectedOptions) => {
+                          onChange(
+                            selectedOptions ? selectedOptions.map((option) => option.value) : [],
+                          );
+                        }}
+                      />
+                    )}
+                  />
+                  {/* <select
                     className="event-control"
                     id="col_label"
                     disabled={data === null}
@@ -275,7 +290,7 @@ export const ProjectCreationForm: FC = () => {
                       Select...
                     </option>
                     {columns}
-                  </select>
+                  </select> */}
 
                   <label className="form-label" htmlFor="cols_context">
                     Contextual information columns (optional)

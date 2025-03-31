@@ -858,13 +858,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Export Generations
          * @description Export annotations
          */
-        get: operations["export_generations_export_generations_get"];
-        put?: never;
-        post?: never;
+        post: operations["export_generations_export_generations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1046,6 +1046,7 @@ export interface paths {
         /**
          * List Generation Models
          * @description Returns the list of the available GenAI models for generation
+         *     API (not the models themselves)
          */
         get: operations["list_generation_models_generate_models_available_get"];
         put?: never;
@@ -1113,6 +1114,8 @@ export interface paths {
          * Postgenerate
          * @description Launch a call to generate from a prompt
          *     Only one possible by user
+         *
+         *     TODO : move to a module
          */
         post: operations["postgenerate_generate_start_post"];
         delete?: never;
@@ -1148,13 +1151,33 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Getgenerate
          * @description Get elements from prediction
          */
-        get: operations["getgenerate_generate_elements_get"];
+        post: operations["getgenerate_generate_elements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/generate/elements/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Dropgenerate
+         * @description Drop all elements from prediction for a user
+         */
+        post: operations["dropgenerate_generate_elements_drop_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1215,6 +1238,67 @@ export interface paths {
          * @description Delete a prompt from the project
          */
         post: operations["delete_prompt_generate_prompts_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Files
+         * @description Get all files
+         */
+        get: operations["get_files_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/add/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload File
+         * @description Upload a file on the server
+         *     use: type de file
+         */
+        post: operations["upload_file_files_add_project_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/files/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete File
+         * @description Delete a file
+         */
+        post: operations["delete_file_files_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1516,6 +1600,14 @@ export interface components {
             /** Client Secret */
             client_secret?: string | null;
         };
+        /** Body_upload_file_files_add_project_post */
+        Body_upload_file_files_add_project_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+        };
         /** CodebookModel */
         CodebookModel: {
             /** Content */
@@ -1551,6 +1643,14 @@ export interface components {
             /** N Sample */
             n_sample?: number | null;
         };
+        /** ExportGenerationsParams */
+        ExportGenerationsParams: {
+            /**
+             * Filters
+             * @default []
+             */
+            filters: string[];
+        };
         /** FeatureDescriptionModel */
         FeatureDescriptionModel: {
             /** Name */
@@ -1579,6 +1679,16 @@ export interface components {
             parameters: {
                 [key: string]: (string | number) | undefined;
             };
+        };
+        /** GeneratedElementsIn */
+        GeneratedElementsIn: {
+            /** N Elements */
+            n_elements: number;
+            /**
+             * Filters
+             * @default []
+             */
+            filters: string[];
         };
         /**
          * GenerationAvailableModel
@@ -1738,10 +1848,10 @@ export interface components {
             };
         };
         /**
-         * ProjectDataModel
-         * @description To create a new project
+         * ProjectBaseModel
+         * @description Parameters of a project to save in the database
          */
-        ProjectDataModel: {
+        ProjectBaseModel: {
             /** Cols Text */
             cols_text: string[];
             /** Project Name */
@@ -1776,8 +1886,11 @@ export interface components {
              * @default fr
              */
             language: string;
-            /** Col Label */
-            col_label?: string | null;
+            /**
+             * Cols Label
+             * @default []
+             */
+            cols_label: string[];
             /**
              * Cols Context
              * @default []
@@ -1805,8 +1918,6 @@ export interface components {
              * @default false
              */
             random_selection: boolean;
-            /** Csv */
-            csv: string;
         };
         /**
          * ProjectDescriptionModel
@@ -1869,8 +1980,11 @@ export interface components {
              * @default fr
              */
             language: string;
-            /** Col Label */
-            col_label?: string | null;
+            /**
+             * Cols Label
+             * @default []
+             */
+            cols_label: string[];
             /**
              * Cols Context
              * @default []
@@ -1928,6 +2042,8 @@ export interface components {
             generations: Record<string, never>;
             /** Errors */
             errors: unknown[][];
+            /** Memory */
+            memory: number;
         };
         /** ProjectSummaryModel */
         ProjectSummaryModel: {
@@ -1938,6 +2054,8 @@ export interface components {
             created_by: string;
             /** Created At */
             created_at: string;
+            /** Size */
+            size?: number | null;
         };
         /** ProjectUpdateModel */
         ProjectUpdateModel: {
@@ -1981,11 +2099,14 @@ export interface components {
             labels: string[];
             /** Predictions */
             predictions?: string[] | null;
+            parameters: components["schemas"]["ProjectionInStrictModel"];
         };
         /** PromptInputModel */
         PromptInputModel: {
             /** Text */
             text: string;
+            /** Name */
+            name?: string | null;
         };
         /** PromptModel */
         PromptModel: {
@@ -2151,6 +2272,17 @@ export interface components {
             col_label?: string | null;
             /** Scheme */
             scheme?: string | null;
+        };
+        /** TextDatasetModel */
+        TextDatasetModel: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /** Filename */
+            filename?: string | null;
+            /** Csv */
+            csv?: string | null;
         };
         /**
          * TokenModel
@@ -2604,7 +2736,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectDataModel"];
+                "application/json": components["schemas"]["ProjectBaseModel"];
             };
         };
         responses: {
@@ -3539,6 +3671,7 @@ export interface operations {
             query: {
                 format: string;
                 name: string;
+                dataset?: string;
                 project_slug: string;
             };
             header?: never;
@@ -3630,17 +3763,20 @@ export interface operations {
             };
         };
     };
-    export_generations_export_generations_get: {
+    export_generations_export_generations_post: {
         parameters: {
             query: {
-                number: number;
                 project_slug: string;
             };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportGenerationsParams"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3774,7 +3910,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TextDatasetModel"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4146,10 +4286,44 @@ export interface operations {
             };
         };
     };
-    getgenerate_generate_elements_get: {
+    getgenerate_generate_elements_post: {
         parameters: {
             query: {
-                n_elements: number;
+                project_slug: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratedElementsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableOutModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dropgenerate_generate_elements_drop_post: {
+        parameters: {
+            query: {
                 project_slug: string;
             };
             header?: never;
@@ -4164,7 +4338,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TableOutModel"];
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4249,6 +4423,92 @@ export interface operations {
             query: {
                 prompt_id: string;
                 project_slug: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_files_files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    upload_file_files_add_project_post: {
+        parameters: {
+            query: {
+                project_name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_file_files_add_project_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_file_files_delete_post: {
+        parameters: {
+            query: {
+                filename: string;
             };
             header?: never;
             path?: never;

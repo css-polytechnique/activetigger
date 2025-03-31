@@ -9,7 +9,6 @@ import { useAppContext } from '../../core/context';
 import { LoginParams } from '../../types';
 import { LoginForm } from './../forms/LoginForm';
 import Notifications from './../layout/Notifications';
-
 export const HomePage: FC = () => {
   const { authenticatedUser } = useAuth();
   const { users } = useGetActiveUsers();
@@ -92,7 +91,7 @@ export const HomePage: FC = () => {
                       {users ? (
                         <div className="explanations">Active users : {users?.length}</div>
                       ) : (
-                        <div className="text-danger">Problem to connect with the server</div>
+                        <div className="text-danger">Problem connecting to the server</div>
                       )}
                     </div>
                   </div>

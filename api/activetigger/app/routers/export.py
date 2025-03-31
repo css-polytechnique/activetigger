@@ -16,7 +16,11 @@ from activetigger.app.dependencies import (
     test_rights,
     verified_user,
 )
-from activetigger.datamodels import StaticFileModel, UserInDBModel
+from activetigger.datamodels import (
+    ExportGenerationsParams,
+    StaticFileModel,
+    UserInDBModel,
+)
 from activetigger.project import Project
 
 router = APIRouter(tags=["export"])
@@ -79,13 +83,15 @@ async def export_prediction(
     project: Annotated[Project, Depends(get_project)],
     format: str = Query(),
     name: str = Query(),
+    dataset: str = Query("all"),
 ) -> FileResponse:
     """
     Export annotations
     """
     try:
+        filename = f"predict_{dataset}.parquet"
         r = project.bertmodels.export_prediction(
-            name=name, file_name="predict_all.parquet", format=format
+            name=name, file_name=filename, format=format
         )
         return FileResponse(r["path"], filename=r["name"])
     except Exception as e:
@@ -123,21 +129,25 @@ async def export_raw(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/export/generations", dependencies=[Depends(verified_user)])
+@router.post("/export/generations", dependencies=[Depends(verified_user)])
 async def export_generations(
     project: Annotated[Project, Depends(get_project)],
     current_user: Annotated[UserInDBModel, Depends(verified_user)],
-    number: int = Query(),
+    params: ExportGenerationsParams,
 ) -> Response:
     """
     Export annotations
     """
+    print(params)
     try:
+        # get the elements
         table = project.generations.get_generated(
             project_slug=project.name,
             username=current_user.username,
-            n_elements=number,
         )
+
+        # apply filters on the generated
+        table["answer"] = project.generations.filter(table["answer"], params.filters)
 
         # join the text
         table = table.join(project.content["text"], on="index")

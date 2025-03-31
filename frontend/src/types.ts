@@ -12,7 +12,7 @@ import { components } from './generated/openapi';
 export type UserModel = components['schemas']['UserModel'];
 
 export type ProjectModel = components['schemas']['ProjectModel'];
-export type ProjectDataModel = components['schemas']['ProjectDataModel'];
+export type ProjectBaseModel = components['schemas']['ProjectBaseModel'];
 export type ProjectStateModel = components['schemas']['ProjectStateModel'];
 export type ElementOutModel = components['schemas']['ElementOutModel'];
 
@@ -20,6 +20,7 @@ export type AvailableProjectsModel = {
   created_by: string;
   created_at: string;
   parameters: ProjectModel;
+  size: number;
 };
 export type LoginParams = components['schemas']['Body_login_for_access_token_token_post'];
 
@@ -59,6 +60,8 @@ export type GenerationModelApi = components['schemas']['GenerationModelApi'];
 
 export type ProjectUpdateModel = components['schemas']['ProjectUpdateModel'];
 
+export type TextDatasetModel = components['schemas']['TextDatasetModel'];
+
 export type ProjectionModelParams =
   | components['schemas']['TsneModel']
   | components['schemas']['UmapModel'];
@@ -86,11 +89,16 @@ export interface FeatureFasttextParameters {
   model?: string;
 }
 
+export interface FeatureSbertParameters {
+  model?: string;
+}
+
 export interface FeatureModelExtended {
   name: string;
   type: string;
   parameters:
     | null
+    | FeatureSbertParameters
     | FeatureDfmParameters
     | FeatureRegexParameters
     | FeatureDatasetParameters
@@ -111,9 +119,10 @@ export interface GenerateConfig {
   endpoint?: string;
   token?: string;
   prompt?: string;
-  prompt_id?: string;
+  promptId?: string;
   n_batch?: number;
-  selection_mode?: string;
+  selectionMode?: string;
+  selectedModel?: GenModel & { api: string };
 }
 
 export interface DisplayConfig {

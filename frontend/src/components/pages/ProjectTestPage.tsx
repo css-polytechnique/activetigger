@@ -104,6 +104,12 @@ export const ProjectTestPage: FC = () => {
           <div className="explanations">
             Switch to the test mode to annotate the testset and compute test statistics.
           </div>
+          <div className="alert alert-warning col-8">
+            Warning: It is important to ensure that the testset does not contaminate the model
+            training. To avoid that, do not use statistics from the testset to change trainset
+            annotations.
+          </div>
+
           {
             // possibility to switch to test mode only if test dataset available
           }
@@ -136,16 +142,18 @@ export const ProjectTestPage: FC = () => {
                 )}
               </div>
               <div className="col-4">
-                <button
-                  className="btn btn-danger"
-                  onClick={() => {
-                    dropTestSet().then(() => {
-                      navigate(`/projects/${projectName}/test`);
-                    });
-                  }}
-                >
-                  Drop existing testset
-                </button>
+                {phase != 'test' && (
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => {
+                      dropTestSet().then(() => {
+                        navigate(`/projects/${projectName}/test`);
+                      });
+                    }}
+                  >
+                    Drop existing testset
+                  </button>
+                )}
               </div>
               {phase == 'test' && (
                 <div className="alert alert-info m-3">
@@ -251,7 +259,10 @@ export const ProjectTestPage: FC = () => {
           {!currentProject?.params.test && (
             <div className="row">
               <div className="col-12">
-                <TestSetCreationForm projectSlug={projectName} />
+                <TestSetCreationForm
+                  projectSlug={projectName}
+                  currentScheme={currentScheme || null}
+                />
               </div>
             </div>
           )}

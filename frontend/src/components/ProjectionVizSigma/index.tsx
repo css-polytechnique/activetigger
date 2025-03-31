@@ -4,6 +4,7 @@ import classNames from 'classnames';
 import Graph from 'graphology';
 import { FC, useCallback, useMemo, useState } from 'react';
 import { PiSelectionSlashBold } from 'react-icons/pi';
+import { Settings } from 'sigma/settings';
 import { NodeDisplayData } from 'sigma/types';
 import { Caption } from './Caption';
 import GraphEvents from './GraphEvents';
@@ -119,28 +120,35 @@ export const ProjectionVizSigma: FC<Props> = ({
     },
     [selectedId, labelColorMapping],
   );
+  const settings: Partial<Settings<NodeAttributesType>> = useMemo(
+    () => ({
+      allowInvalidContainer: true,
+      nodeReducer,
+    }),
+    [nodeReducer],
+  );
 
   return (
     <div className={className}>
-      <select
-        value={selectedColumn}
-        onChange={(event) => {
-          setSelectedColumn(event.target.value as 'labels' | 'predictions');
-        }}
-      >
-        <option value="labels">Annotated elements</option>
-        {data.predictions && <option value="predictions">Predicted elements</option>}
-      </select>
+      <div className="m-3">
+        <label className="mx-2">Color by: </label>
+        <select
+          value={selectedColumn}
+          onChange={(event) => {
+            setSelectedColumn(event.target.value as 'labels' | 'predictions');
+          }}
+        >
+          <option value="labels">Annotated elements</option>
+          {data.predictions && <option value="predictions">Predicted elements</option>}
+        </select>
+      </div>
       <SigmaContainer
         className={classNames(
           sigmaCursor ? `cursor-${sigmaCursor}` : activeTool === 'marquee' && 'cursor-crosshair',
         )}
         style={sigmaStyle}
         graph={graph}
-        settings={{
-          allowInvalidContainer: true,
-          nodeReducer,
-        }}
+        settings={settings}
       >
         <GraphEvents setSelectedId={setSelectedId} setSigmaCursor={setSigmaCursor} />
         <ControlsContainer position="bottom-left">

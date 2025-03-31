@@ -1,3 +1,4 @@
+import io
 from typing import Annotated
 
 import pandas as pd
@@ -17,6 +18,7 @@ from activetigger.datamodels import (
     BertModelModel,
     SimpleModelModel,
     SimpleModelOutModel,
+    TextDatasetModel,
     UserInDBModel,
 )
 from activetigger.orchestrator import orchestrator
@@ -37,7 +39,7 @@ async def post_simplemodel(
     try:
         project.update_simplemodel(simplemodel, current_user.username)
         orchestrator.log_action(
-            current_user.username, "INFO compute simplemodel", project.name
+            current_user.username, "TRAIN MODEL: simplemodel", project.name
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -80,6 +82,7 @@ async def predict(
     scheme: str,
     dataset: str = "all",
     batch_size: int = 32,
+    external_dataset: TextDatasetModel | None = None,
 ) -> None:
     """
     Start prediction with a model
@@ -96,6 +99,24 @@ async def predict(
         elif dataset == "all":
             df = pd.DataFrame(project.features.get_column_raw("text", index="all"))
             col_label = None
+        elif dataset == "external":
+            if external_dataset is None:
+                raise HTTPException(
+                    status_code=400, detail="External dataset is missing"
+                )
+            csv_buffer = io.StringIO(external_dataset.csv)
+            df = pd.read_csv(
+                csv_buffer,
+            )
+            df["text"] = df[external_dataset.text]
+            if len(df[external_dataset.id].unique()) == len(df):
+                df["index"] = df[external_dataset.id].apply(str)
+            else:
+                df["index"] = ["external-" + str(i) for i in range(len(df))]
+            df.set_index("index", inplace=True)
+            df = df[["text"]].dropna()
+            col_label = None
+            # raise HTTPException(status_code=500, detail="Not implemented yet")
         else:
             raise Exception(f"dataset {dataset} not found")
 
@@ -111,7 +132,7 @@ async def predict(
             batch_size=batch_size,
         )
         orchestrator.log_action(
-            current_user.username, f"INFO predict bert {model_name}", project.name
+            current_user.username, f"PREDICT MODEL: {model_name}", project.name
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -144,7 +165,7 @@ async def start_test(
             col_labels="labels",
         )
         orchestrator.log_action(
-            current_user.username, "INFO predict bert for testing", project.name
+            current_user.username, "PREDICT MODEL TEST", project.name
         )
         return None
 
@@ -203,7 +224,7 @@ async def post_bert(
             test_size=bert.test_size,
         )
         orchestrator.log_action(
-            current_user.username, f"INFO train bert {bert.name}", project.name
+            current_user.username, f"TRAIN MODEL: {bert.name}", project.name
         )
         return None
 
@@ -238,10 +259,13 @@ async def stop_bert(
         unique_id = p[0].unique_id
         # kill the process
         orchestrator.queue.kill(unique_id)
-        # delete it in the database
-        project.bertmodels.projects_service.delete_model(project.name, p[0].model.name)
+        # delete it in the database if it is a training
+        if p[0].kind == "train_bert":
+            project.bertmodels.projects_service.delete_model(
+                project.name, p[0].model.name
+            )
         orchestrator.log_action(
-            current_user.username, "INFO stop bert training", project.name
+            current_user.username, "STOP MODEL TRAINING", project.name
         )
         return None
     except Exception as e:
@@ -262,7 +286,7 @@ async def delete_bert(
     try:
         project.bertmodels.delete(bert_name)
         orchestrator.log_action(
-            current_user.username, f"INFO delete bert model {bert_name}", project.name
+            current_user.username, f"DELETE MODEL: {bert_name}", project.name
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -284,7 +308,7 @@ async def save_bert(
         project.bertmodels.rename(former_name, new_name)
         orchestrator.log_action(
             current_user.username,
-            f"INFO rename bert model {former_name} - {new_name}",
+            f"INFO RENAME MODEL: {former_name} -> {new_name}",
             project.name,
         )
     except Exception as e:
